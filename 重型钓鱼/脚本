@@ -1,0 +1,794 @@
+local lp = game:GetService("Players").LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+getgenv().AutoEquipRod = false
+getgenv().AutoCast = false
+getgenv().AutoBoss = false
+getgenv().Anchor = false
+getgenv().AutoSell = false
+getgenv().SellTime = 5
+getgenv().AutoZ = false
+getgenv().AutoX = false
+getgenv().AutoC = false
+getgenv().AutoV = false
+getgenv().AutoCalibrate = false
+getgenv().AutoFarmZ = false
+getgenv().AutoFarmX = false
+getgenv().AutoFarmC = false
+getgenv().AutoFarmV = false
+getgenv().AutoEnzo = false
+getgenv().AnchorEnabled = false
+getgenv().AnchorPos = nil
+
+local skillOrder = {}
+local currentSkillIndex = 1
+local orderDisplayParagraph = nil
+
+local function updateOrderDisplay()
+    if not orderDisplayParagraph then return end
+    local str = table.concat(skillOrder, " → ")
+    if str == "" then str = "无" end
+    orderDisplayParagraph:SetDesc(str)
+end
+
+local function addSkillToOrder(key)
+    for i, k in ipairs(skillOrder) do
+        if k == key then return end
+    end
+    table.insert(skillOrder, key)
+    updateOrderDisplay()
+end
+
+local function removeSkillFromOrder(key)
+    for i = #skillOrder, 1, -1 do
+        if skillOrder[i] == key then
+            table.remove(skillOrder, i)
+            break
+        end
+    end
+    if #skillOrder == 0 then
+        currentSkillIndex = 1
+    else
+        currentSkillIndex = math.clamp(currentSkillIndex, 1, #skillOrder)
+    end
+    updateOrderDisplay()
+end
+
+local virtualUser = game:GetService('VirtualUser')
+game:GetService('Players').LocalPlayer.Idled:connect(function()
+    virtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    wait(1)
+    virtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+end)
+
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Win = WindUI:CreateWindow({
+    Title = "重型钓鱼",
+    Icon = "anchor",
+    Author = lp.DisplayName,
+    Size = UDim2.fromOffset(580, 460),
+    Theme = "Crimson",
+    Accent = "Cyan",
+    Folder = "重型钓鱼"
+})
+
+local config = Win.ConfigManager:Config("配置文件", false)
+Win:SetCurrentConfig(config)
+
+local TabMain = Win:Tab({
+    Title = "钓鱼",
+    Icon = "fish"
+})
+
+TabMain:Section({ Title = "钓鱼系统" })
+
+TabMain:Toggle({
+    Title = "自动拿杆",
+    Desc = "自动拿起杆",
+    Default = getgenv().AutoEquipRod,
+    Flag = "AutoEquipRod",
+    Callback = function(s) getgenv().AutoEquipRod = s end
+})
+
+TabMain:Toggle({
+    Title = "自动抛竿",
+    Desc = "自动抛竿",
+    Default = getgenv().AutoCast,
+    Flag = "AutoCast",
+    Callback = function(s) getgenv().AutoCast = s end
+})
+
+TabMain:Toggle({
+    Title = "自动钓boss",
+    Desc = "自动检测boss",
+    Default = getgenv().AutoBoss,
+    Flag = "AutoBoss",
+    Callback = function(s) getgenv().AutoBoss = s end
+})
+
+TabMain:Toggle({
+    Title = "自动拉杆",
+    Desc = "自动平衡杆子",
+    Default = getgenv().Anchor,
+    Flag = "Anchor",
+    Callback = function(s) getgenv().Anchor = s end
+})
+
+TabMain:Divider()
+
+TabMain:Section({ Title = "出售系统" })
+
+TabMain:Toggle({
+    Title = "自动出售",
+    Desc = "自动卖出",
+    Default = getgenv().AutoSell,
+    Flag = "AutoSell",
+    Callback = function(s) getgenv().AutoSell = s end
+})
+
+TabMain:Input({
+    Title = "出售时间",
+    Desc = "设置自动出售间隔（秒）",
+    Default = tostring(getgenv().SellTime),
+    Flag = "SellTime",
+    Callback = function(value)
+        local num = tonumber(value)
+        if num and num > 0 then
+            getgenv().SellTime = num
+        end
+    end
+})
+
+TabMain:Button({
+    Title = "一键出售",
+    Desc = "卖出背包里的所有鱼",
+    Icon = "coins",
+    Callback = function() pcall(function() RS.Events.SellFish:FireServer("All") end) end
+})
+
+TabMain:Divider()
+TabMain:Section({ Title = "锚定坐标" })
+
+local anchorDisplay = TabMain:Paragraph({
+    Title = "当前锚点坐标",
+    Desc = (function()
+        local data = getgenv().AnchorPos
+        if data then
+            local yaw = data.ry and math.deg(data.ry) or 0
+            return string.format("位置: X:%.1f Y:%.1f Z:%.1f  朝向: %.1f°", data.x, data.y, data.z, yaw)
+        else
+            return "未设置"
+        end
+    end)()
+})
+
+local function applyAnchor()
+    pcall(function()
+        if not getgenv().AnchorEnabled or not getgenv().AnchorPos then return end
+        local char = lp.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local data = getgenv().AnchorPos
+            local rx = data.rx or 0
+            local ry = data.ry or 0
+            local rz = data.rz or 0
+            char.HumanoidRootPart.CFrame = CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
+            char.HumanoidRootPart.Anchored = true
+        end
+    end)
+end
+
+local function releaseAnchor()
+    pcall(function()
+        local char = lp.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.Anchored = false
+        end
+    end)
+end
+
+TabMain:Toggle({
+    Title = "锚定坐标",
+    Desc = "传送至保存坐标并锚定身体",
+    Default = getgenv().AnchorEnabled,
+    Flag = "AnchorEnabled",
+    Callback = function(s)
+        getgenv().AnchorEnabled = s
+        if s then
+            applyAnchor()
+        else
+            releaseAnchor()
+        end
+    end
+})
+
+TabMain:Button({
+    Title = "保存当前坐标",
+    Desc = "将当前位置保存为锚点",
+    Icon = "map-pin",
+    Callback = function()
+        pcall(function()
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                local cframe = lp.Character.HumanoidRootPart.CFrame
+                local pos = cframe.Position
+                local rx, ry, rz = cframe:ToEulerAnglesXYZ()
+                getgenv().AnchorPos = {
+                    x = pos.X, y = pos.Y, z = pos.Z,
+                    rx = rx, ry = ry, rz = rz
+                }
+                local yaw = math.deg(ry)
+                anchorDisplay:SetDesc(string.format("位置: X:%.1f Y:%.1f Z:%.1f  朝向: %.1f°", pos.X, pos.Y, pos.Z, yaw))
+                if getgenv().AnchorEnabled then
+                    applyAnchor()
+                end
+            else
+                WindUI:Notify({ Title = "错误", Content = "角色不存在", Duration = 2 })
+            end
+        end)
+    end
+})
+
+local TabSkills = Win:Tab({
+    Title = "技能",
+    Icon = "zap"
+})
+
+TabSkills:Section({ Title = "技能释放" })
+
+TabSkills:Toggle({
+    Title = "自动 Z 技能",
+    Default = getgenv().AutoZ,
+    Flag = "AutoZ",
+    Callback = function(s)
+        getgenv().AutoZ = s
+        if s then
+            addSkillToOrder("Z")
+        else
+            removeSkillFromOrder("Z")
+        end
+    end
+})
+
+TabSkills:Toggle({
+    Title = "自动 X 技能",
+    Default = getgenv().AutoX,
+    Flag = "AutoX",
+    Callback = function(s)
+        getgenv().AutoX = s
+        if s then
+            addSkillToOrder("X")
+        else
+            removeSkillFromOrder("X")
+        end
+    end
+})
+
+TabSkills:Toggle({
+    Title = "自动 C 技能",
+    Default = getgenv().AutoC,
+    Flag = "AutoC",
+    Callback = function(s)
+        getgenv().AutoC = s
+        if s then
+            addSkillToOrder("C")
+        else
+            removeSkillFromOrder("C")
+        end
+    end
+})
+
+TabSkills:Toggle({
+    Title = "自动 V 技能",
+    Default = getgenv().AutoV,
+    Flag = "AutoV",
+    Callback = function(s)
+        getgenv().AutoV = s
+        if s then
+            addSkillToOrder("V")
+        else
+            removeSkillFromOrder("V")
+        end
+    end
+})
+
+TabSkills:Divider()
+
+TabSkills:Section({ Title = "技能释放顺序（按开关顺序循环）" })
+orderDisplayParagraph = TabSkills:Paragraph({
+    Title = "当前顺序",
+    Desc = "无"
+})
+updateOrderDisplay()
+
+TabSkills:Section({ Title = "辅助系统" })
+
+TabSkills:Toggle({
+    Title = "自动校准",
+    Desc = "自动校准点击",
+    Default = getgenv().AutoCalibrate,
+    Flag = "AutoCalibrate",
+    Callback = function(s) getgenv().AutoCalibrate = s end
+})
+
+local TabTP = Win:Tab({
+    Title = "NPC",
+    Icon = "users"
+})
+
+TabTP:Section({ Title = "传送功能" })
+
+TabTP:Button({
+    Title = "传送至小道士",
+    Desc = "传送到小道士身边",
+    Icon = "map-pin",
+    Callback = function()
+        pcall(function()
+            if workspace:FindFirstChild("NPC") and workspace.NPC:FindFirstChild("Function") and workspace.NPC.Function:FindFirstChild("Taoist") then
+                if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                    lp.Character.HumanoidRootPart.CFrame = workspace.NPC.Function.Taoist:GetPivot()
+                end
+            end
+        end)
+    end
+})
+
+local TaoistStatus = TabTP:Paragraph({
+    Title = "小道士是否存在",
+    Desc = "检测中..."
+})
+
+TabTP:Divider()
+
+TabTP:Button({
+    Title = "传送至大师兄",
+    Desc = "传送到大师兄身边",
+    Icon = "map-pin",
+    Callback = function()
+        pcall(function()
+            if workspace:FindFirstChild("NPC") and workspace.NPC:FindFirstChild("Function") and workspace.NPC.Function:FindFirstChild("Maoshan") then
+                if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                    lp.Character.HumanoidRootPart.CFrame = workspace.NPC.Function.Maoshan:GetPivot()
+                end
+            end
+        end)
+    end
+})
+
+local MaoshanStatus = TabTP:Paragraph({
+    Title = "大师兄是否存在",
+    Desc = "检测中..."
+})
+
+TabTP:Divider()
+
+TabTP:Section({ Title = "恩佐" })
+
+TabTP:Toggle({
+    Title = "自动恩佐小游戏",
+    Desc = "自动完成恩佐小游戏(会导致钓鱼按钮消失)",
+    Default = getgenv().AutoEnzo,
+    Flag = "AutoEnzo",
+    Callback = function(s) getgenv().AutoEnzo = s end
+})
+
+TabTP:Button({
+    Title = "恢复钓鱼按钮",
+    Desc = "钓鱼按钮再也不会消失了",
+    Icon = "eye",
+    Callback = function()
+        pcall(function()
+            local mainGui = lp.PlayerGui:FindFirstChild("MainGui")
+            if mainGui then
+                local mobile = mainGui:FindFirstChild("Mobile")
+                local fishingBtn = mobile and mobile:FindFirstChild("Fishing")
+                
+                local function protectVisible(instance)
+                    if not instance then return end
+                    instance:GetPropertyChangedSignal("Visible"):Connect(function()
+                        if instance.Visible == false then
+                            instance.Visible = true
+                        end
+                    end)
+                    if not instance.Visible then
+                        instance.Visible = true
+                    end
+                end
+
+                protectVisible(mobile)
+                protectVisible(fishingBtn)
+            end
+        end)
+    end
+})
+
+local TabAuto = Win:Tab({
+    Title = "自动",
+    Icon = "repeat"
+})
+
+TabAuto:Section({ Title = "技能自动刷" })
+
+TabAuto:Toggle({ Title = "自动刷 Z 技能", Default = getgenv().AutoFarmZ, Flag = "AutoFarmZ", Callback = function(s) getgenv().AutoFarmZ = s end })
+TabAuto:Toggle({ Title = "自动刷 X 技能", Default = getgenv().AutoFarmX, Flag = "AutoFarmX", Callback = function(s) getgenv().AutoFarmX = s end })
+TabAuto:Toggle({ Title = "自动刷 C 技能", Default = getgenv().AutoFarmC, Flag = "AutoFarmC", Callback = function(s) getgenv().AutoFarmC = s end })
+TabAuto:Toggle({ Title = "自动刷 V 技能", Default = getgenv().AutoFarmV, Flag = "AutoFarmV", Callback = function(s) getgenv().AutoFarmV = s end })
+
+local TabSettings = Win:Tab({
+    Title = "设置",
+    Icon = "settings"
+})
+
+local themes = WindUI:GetThemes()
+local themeNames = {}
+for name in pairs(themes) do
+    table.insert(themeNames, name)
+end
+table.sort(themeNames)
+
+local themeDropdown
+local autoLoadToggle
+
+TabSettings:Section({ Title = "外观设置" })
+
+themeDropdown = TabSettings:Dropdown({
+    Title = "主题颜色",
+    Desc = "切换界面主题",
+    Values = themeNames,
+    Value = WindUI:GetCurrentTheme(),
+    Flag = "theme",
+    Callback = function(value)
+        WindUI:SetTheme(value)
+    end
+})
+
+TabSettings:Divider()
+
+TabSettings:Section({ Title = "配置文件管理" })
+
+autoLoadToggle = TabSettings:Toggle({
+    Title = "自动加载",
+    Desc = "启动时自动加载保存的配置",
+    Default = config.AutoLoad or false,
+    Callback = function(s)
+        config:SetAutoLoad(s)
+        config:Save()
+    end
+})
+
+TabSettings:Button({
+    Title = "保存配置",
+    Desc = "将当前所有设置保存到文件",
+    Icon = "save",
+    Callback = function()
+        if getgenv().AnchorPos then
+            config:Set("AnchorPos", getgenv().AnchorPos)
+        end
+        config:Save()
+        WindUI:Notify({ Title = "配置", Content = "配置已保存", Duration = 2 })
+    end
+})
+
+TabSettings:Button({
+    Title = "加载配置",
+    Desc = "从文件加载已保存的设置",
+    Icon = "download",
+    Callback = function()
+        config:Load()
+        autoLoadToggle:Set(config.AutoLoad)
+        local savedPos = config:Get("AnchorPos")
+        if savedPos and type(savedPos) == "table" then
+            savedPos.rx = savedPos.rx or 0
+            savedPos.ry = savedPos.ry or 0
+            savedPos.rz = savedPos.rz or 0
+            getgenv().AnchorPos = savedPos
+            anchorDisplay:SetDesc(string.format("位置: X:%.1f Y:%.1f Z:%.1f  朝向: %.1f°", savedPos.x, savedPos.y, savedPos.z, math.deg(savedPos.ry or 0)))
+            if getgenv().AnchorEnabled then
+                applyAnchor()
+            end
+        end
+        WindUI:Notify({ Title = "配置", Content = "配置已加载", Duration = 2 })
+    end
+})
+
+if config.AutoLoad == true then
+    pcall(function()
+        config:Load()
+    end)
+    autoLoadToggle:Set(config.AutoLoad)
+    local savedPos = config:Get("AnchorPos")
+    if savedPos and type(savedPos) == "table" then
+        savedPos.rx = savedPos.rx or 0
+        savedPos.ry = savedPos.ry or 0
+        savedPos.rz = savedPos.rz or 0
+        getgenv().AnchorPos = savedPos
+        anchorDisplay:SetDesc(string.format("位置: X:%.1f Y:%.1f Z:%.1f  朝向: %.1f°", savedPos.x, savedPos.y, savedPos.z, math.deg(savedPos.ry or 0)))
+        if getgenv().AnchorEnabled then
+            applyAnchor()
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+        pcall(function()
+            if workspace:FindFirstChild("NPC") and workspace.NPC:FindFirstChild("Function") and workspace.NPC.Function:FindFirstChild("Taoist") then
+                TaoistStatus:SetDesc("存在")
+            else
+                TaoistStatus:SetDesc("不存在")
+            end
+      end)
+end)
+
+RunService.RenderStepped:Connect(function()
+        pcall(function()
+            if workspace:FindFirstChild("NPC") and workspace.NPC:FindFirstChild("Function") and workspace.NPC.Function:FindFirstChild("Maoshan") then
+                MaoshanStatus:SetDesc("存在")
+            else
+                MaoshanStatus:SetDesc("不存在")
+            end
+      end)
+end)
+
+local function checkFishingGui()
+    local mainGui = lp.PlayerGui:FindFirstChild("MainGui")
+    return mainGui and mainGui:FindFirstChild("Fishing") and mainGui.Fishing.Visible
+end
+
+local function isFishing()
+    local char = lp.Character
+    return char and char:GetAttribute("Fishing")
+end
+
+local function toggleHotbar()
+    RS:WaitForChild("Events"):WaitForChild("ToggleHotbar"):InvokeServer("1")
+end
+
+local function cancelAndReEquip()
+    toggleHotbar()
+    toggleHotbar()
+    local hasTool = false
+    if workspace:FindFirstChild(lp.Name) and workspace[lp.Name]:FindFirstChild("Tool") then
+        hasTool = true
+    end
+    if not hasTool then
+        toggleHotbar()
+    end
+end
+
+local function processAutoFarmSkill(keyName)
+    pcall(function()
+        if lp.Character and not isFishing() then
+            RS.Events.Fishing:FireServer()
+            task.wait(1)
+        end
+        if isFishing() and checkFishingGui() then
+            RS.Events.UseSkill:FireServer(keyName)
+            task.wait(0.1)
+            local skillValueGt0 = false
+            if workspace:FindFirstChild(lp.Name) and workspace[lp.Name]:FindFirstChild("Skills") then
+                for _, skill in pairs(workspace[lp.Name].Skills:GetChildren()) do
+                    if skill:GetAttribute("Key") == keyName and skill.Value > 0 then
+                        skillValueGt0 = true
+                        break
+                    end
+                end
+            end
+            if skillValueGt0 then
+                cancelAndReEquip()
+            end
+        end
+    end)
+end
+
+local isCurrentFishBoss = false
+RS:WaitForChild("Events"):WaitForChild("FishingMinigame").OnClientEvent:Connect(function(fishData)
+    if fishData and fishData.Boss == true then
+        isCurrentFishBoss = true
+    else
+        isCurrentFishBoss = false
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if getgenv().AutoBoss then
+            pcall(function()
+                if lp.Character and not isFishing() then
+                    RS.Events.Fishing:FireServer()
+                    task.wait(1)
+                end
+
+                if isFishing() and checkFishingGui() then
+                    if not isCurrentFishBoss then
+                        toggleHotbar()
+                        toggleHotbar()
+                        local hasTool = false
+                        if workspace:FindFirstChild(lp.Name) and workspace[lp.Name]:FindFirstChild("Tool") then
+                                hasTool = true
+                            end
+                        if not hasTool then
+                            toggleHotbar()
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if getgenv().AutoFarmZ then processAutoFarmSkill("Z") end
+        if getgenv().AutoFarmX then processAutoFarmSkill("X") end
+        if getgenv().AutoFarmC then processAutoFarmSkill("C") end
+        if getgenv().AutoFarmV then processAutoFarmSkill("V") end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if getgenv().AutoCast then
+            pcall(function()
+                if lp.Character and not isFishing() then
+                    RS.Events.Fishing:FireServer()
+                end
+            end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if getgenv().AutoEquipRod then
+            pcall(function()
+                local hasTool = false
+                if workspace:FindFirstChild(lp.Name) and workspace[lp.Name]:FindFirstChild("Tool") then
+                    hasTool = true
+                end
+                if not hasTool then
+                    toggleHotbar()
+                end
+            end)
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if getgenv().Anchor then
+        pcall(function()
+            if checkFishingGui() then
+                local mainGui = lp.PlayerGui:FindFirstChild("MainGui")
+                local bar = mainGui.Fishing.BarFrame.Bar
+                bar.Position = UDim2.new(0.5, 0, bar.Position.Y.Scale, 0)
+                RS.Fishing:FireServer("1")
+            end
+        end)
+    end
+end)
+
+task.spawn(function()
+    while task.wait(getgenv().SellTime) do
+        if getgenv().AutoSell then
+            pcall(function() RS.Events.SellFish:FireServer("All") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if isFishing() and checkFishingGui() then
+
+            local skillAvailable = {}
+            if lp.Character and lp.Character:FindFirstChild("Skills") then
+                for _, skill in pairs(lp.Character.Skills:GetChildren()) do
+                    pcall(function()
+                        local key = skill:GetAttribute("Key")
+                        if key then
+                            skillAvailable[key] = (skill.Value <= 0)
+                        end
+                    end)
+                end
+            end
+
+            if #skillOrder > 0 then
+                local key = skillOrder[currentSkillIndex]
+
+                if getgenv()["Auto"..key] and skillAvailable[key] then
+                    pcall(function() RS.Events.UseSkill:FireServer(key) end)
+                end
+
+                currentSkillIndex = currentSkillIndex % #skillOrder + 1
+            end
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if getgenv().AutoCalibrate then
+        pcall(function()
+            if checkFishingGui() then
+                local mainGui = lp.PlayerGui:FindFirstChild("MainGui")
+                local fishing = mainGui.Fishing
+
+                for _, obj in pairs(fishing:GetDescendants()) do
+                    if obj.Name == "Line" and obj:IsA("GuiObject") and obj.Visible then
+                        local button = obj.Parent
+
+                        if button and button:IsA("GuiObject") and button.Visible then
+                            local outerSize = obj.AbsoluteSize.X
+                            local innerSize = button.AbsoluteSize.X
+
+                            if outerSize == innerSize then
+                                if getconnections then
+                                    for _, signalName in pairs({"MouseButton1Click", "MouseButton1Down", "Activated", "InputBegan"}) do
+                                        local connections = getconnections(button[signalName])
+                                        for _, connection in pairs(connections) do
+                                            connection:Fire()
+                                        end
+                                    end
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+local hasClicked = false
+local shrinkFactor = 0.15
+
+local function simulateMouseDown(guiObject)
+    if not guiObject then return end
+    local absPos = guiObject.AbsolutePosition
+    local absSize = guiObject.AbsoluteSize
+    local inset = GuiService:GetGuiInset()
+    local centerX = absPos.X + absSize.X / 2 + inset.X
+    local centerY = absPos.Y + absSize.Y / 2 + inset.Y
+    
+    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 0)
+    VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 0)
+end
+
+RunService.RenderStepped:Connect(function()
+    if not getgenv().AutoEnzo then 
+        hasClicked = false 
+        return 
+    end
+    
+    pcall(function()
+        local mainGui = lp.PlayerGui.MainGui
+        local bossFightBar = mainGui.Fishing.BossFightBar
+        
+        if not bossFightBar.Visible or bossFightBar.AbsoluteSize.X <= 0 then
+            hasClicked = false
+            return
+        end
+        
+        local bar = bossFightBar.Bar
+        local hitbox = bossFightBar.Hitbox
+        local mobileFishing = mainGui.Mobile.Fishing
+        
+        local barCenter = bar.AbsolutePosition.X + (bar.AbsoluteSize.X / 2)
+        local originalLeft = hitbox.AbsolutePosition.X
+        local originalWidth = hitbox.AbsoluteSize.X
+        local shrinkAmount = originalWidth * shrinkFactor
+        
+        local hitboxLeft = originalLeft + shrinkAmount
+        local hitboxRight = originalLeft + originalWidth - shrinkAmount
+        
+        local insideHitbox = (barCenter >= hitboxLeft) and (barCenter <= hitboxRight)
+        
+        if insideHitbox and not hasClicked then
+            hasClicked = true
+            simulateMouseDown(mobileFishing)
+        end
+        if not insideHitbox then
+            hasClicked = false
+        end
+    end)
+end)
