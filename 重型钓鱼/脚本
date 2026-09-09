@@ -22,6 +22,15 @@ getgenv().AutoFarmV = false
 getgenv().AutoEnzo = false
 getgenv().AnchorEnabled = false
 getgenv().AnchorPos = nil
+getgenv().KeepScript = false
+local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+local TeleportCheck = false
+lp.OnTeleport:Connect(function()
+    if getgenv().KeepScript and (not TeleportCheck) and queueteleport then
+        TeleportCheck = true
+        queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/yan-520/luau/refs/heads/main/%E9%87%8D%E5%9E%8B%E9%92%93%E9%B1%BC/%E8%84%9A%E6%9C%AC'))()")
+    end
+end)
 
 local skillOrder = {}
 local currentSkillIndex = 1
@@ -510,6 +519,18 @@ if config.AutoLoad == true then
         end
     end
 end
+
+TabSettings:Divider()
+
+TabSettings:Section({ Title = "换服务器自动执行脚本" })
+
+local keepScriptToggle = TabSettings:Toggle({
+    Title = "换服务器自动执行脚本",
+    Desc = "换服务器后自动重新加载本脚本",
+    Default = getgenv().KeepScript,
+    Flag = "KeepScript",
+    Callback = function(s) getgenv().KeepScript = s end
+})
 
 RunService.RenderStepped:Connect(function()
         pcall(function()
