@@ -88,6 +88,15 @@ local Win = WindUI:CreateWindow({
 local config = Win.ConfigManager:Config("配置文件", false)
 Win:SetCurrentConfig(config)
 
+local SETTINGS_KEYS = {
+    "AutoEquipRod", "AutoCast", "AutoBoss", "Anchor", "AutoSell", "SellTime",
+    "AutoZ", "AutoX", "AutoC", "AutoV", "AutoCalibrate",
+    "AutoFarmZ", "AutoFarmX", "AutoFarmC", "AutoFarmV",
+    "AutoEnzo", "AnchorEnabled", "KeepScript"
+}
+
+local saveSettings, loadSettings
+
 local TabMain = Win:Tab({
     Title = "钓鱼",
     Icon = "fish"
@@ -175,19 +184,32 @@ local anchorDisplay = TabMain:Paragraph({
     end)()
 })
 
+local anchorBusy = false
+
+local function buildTargetCFrame()
+    local data = getgenv().AnchorPos
+    if not data then return nil end
+    return CFrame.new(data.x, data.y, data.z) * CFrame.Angles(data.rx or 0, data.ry or 0, data.rz or 0)
+end
+
 local function applyAnchor()
+    if anchorBusy then return end
+    anchorBusy = true
     pcall(function()
         if not getgenv().AnchorEnabled or not getgenv().AnchorPos then return end
         local char = lp.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            local data = getgenv().AnchorPos
-            local rx = data.rx or 0
-            local ry = data.ry or 0
-            local rz = data.rz or 0
-            char.HumanoidRootPart.CFrame = CFrame.new(data.x, data.y, data.z) * CFrame.Angles(rx, ry, rz)
-            char.HumanoidRootPart.Anchored = true
-        end
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = char.HumanoidRootPart
+        local targetCFrame = buildTargetCFrame()
+        if not targetCFrame then return end
+
+        hrp.Anchored = false
+        hrp.CFrame = targetCFrame
+        task.wait(0.1)
+        hrp.CFrame = targetCFrame
+        hrp.Anchored = true
     end)
+    anchorBusy = false
 end
 
 local function releaseAnchor()
@@ -207,7 +229,7 @@ TabMain:Toggle({
     Callback = function(s)
         getgenv().AnchorEnabled = s
         if s then
-            applyAnchor()
+            task.spawn(applyAnchor)
         else
             releaseAnchor()
         end
@@ -472,10 +494,7 @@ TabSettings:Button({
     Desc = "将当前所有设置保存到文件",
     Icon = "save",
     Callback = function()
-        if getgenv().AnchorPos then
-            config:Set("AnchorPos", getgenv().AnchorPos)
-        end
-        config:Save()
+        saveSettings()
         WindUI:Notify({ Title = "配置", Content = "配置已保存", Duration = 2 })
     end
 })
@@ -485,40 +504,11 @@ TabSettings:Button({
     Desc = "从文件加载已保存的设置",
     Icon = "download",
     Callback = function()
-        config:Load()
+        loadSettings()
         autoLoadToggle:Set(config.AutoLoad)
-        local savedPos = config:Get("AnchorPos")
-        if savedPos and type(savedPos) == "table" then
-            savedPos.rx = savedPos.rx or 0
-            savedPos.ry = savedPos.ry or 0
-            savedPos.rz = savedPos.rz or 0
-            getgenv().AnchorPos = savedPos
-            anchorDisplay:SetDesc(string.format("位置: X:%.1f Y:%.1f Z:%.1f  朝向: %.1f°", savedPos.x, savedPos.y, savedPos.z, math.deg(savedPos.ry or 0)))
-            if getgenv().AnchorEnabled then
-                applyAnchor()
-            end
-        end
         WindUI:Notify({ Title = "配置", Content = "配置已加载", Duration = 2 })
     end
 })
-
-if config.AutoLoad == true then
-    pcall(function()
-        config:Load()
-    end)
-    autoLoadToggle:Set(config.AutoLoad)
-    local savedPos = config:Get("AnchorPos")
-    if savedPos and type(savedPos) == "table" then
-        savedPos.rx = savedPos.rx or 0
-        savedPos.ry = savedPos.ry or 0
-        savedPos.rz = savedPos.rz or 0
-        getgenv().AnchorPos = savedPos
-        anchorDisplay:SetDesc(string.format("位置: X:%.1f Y:%.1f Z:%.1f  朝向: %.1f°", savedPos.x, savedPos.y, savedPos.z, math.deg(savedPos.ry or 0)))
-        if getgenv().AnchorEnabled then
-            applyAnchor()
-        end
-    end
-end
 
 TabSettings:Divider()
 
@@ -531,6 +521,47 @@ local keepScriptToggle = TabSettings:Toggle({
     Flag = "KeepScript",
     Callback = function(s) getgenv().KeepScript = s end
 })
+
+function saveSettings()
+    if getgenv().AnchorPos then
+        config:Set("AnchorPos", getgenv().AnchorPos)
+    end
+    for _, key in ipairs(SETTINGS_KEYS) do
+        config:Set(key, getgenv()[key])
+    end
+    config:Save()
+end
+
+function loadSettings()
+    config:Load()
+    for _, key in ipairs(SETTINGS_KEYS) do
+        local val = config:Get(key)
+        if val ~= nil then
+            getgenv()[key] = val
+        end
+    end
+    local savedPos = config:Get("AnchorPos")
+    if savedPos and type(savedPos) == "table" then
+        savedPos.rx = savedPos.rx or 0
+        savedPos.ry = savedPos.ry or 0
+        savedPos.rz = savedPos.rz or 0
+        getgenv().AnchorPos = savedPos
+        anchorDisplay:SetDesc(string.format("位置: X:%.1f Y:%.1f Z:%.1f  朝向: %.1f°", savedPos.x, savedPos.y, savedPos.z, math.deg(savedPos.ry or 0)))
+        if getgenv().AnchorEnabled then
+            applyAnchor()
+        end
+    end
+    if keepScriptToggle then
+        keepScriptToggle:Set(getgenv().KeepScript)
+    end
+end
+
+if config.AutoLoad == true then
+    pcall(function()
+        loadSettings()
+    end)
+    autoLoadToggle:Set(config.AutoLoad)
+end
 
 RunService.RenderStepped:Connect(function()
         pcall(function()
